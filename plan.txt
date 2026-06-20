@@ -1,0 +1,745 @@
+
+
+---
+  INSIGHT-ENGINE — Complete Master Plan
+
+  1. Project Identity
+
+  Project Name   : insight-engine
+  Purpose        : Multi-Agent RAG system for PDF document Q&A
+  Framework      : Google ADK (orchestration) + LangChain (RAG layer)
+  Vector DB      : ChromaDB
+  Dev LLM        : Groq — llama-3.1-8b-instant (free)
+  Dev Embeddings : HuggingFace — BAAI/bge-small-en-v1.5 (local, free)
+  Final LLM      : Google Gemini — gemini-1.5-flash / gemini-1.5-pro
+  Final Embeddings: Google — text-embedding-004
+  Documents      : PDF files (user provided)
+  Python Version : 3.10+
+
+  ---
+  2. Complete Folder Structure
+
+  insight-engine/
+  │
+  ├── agents/
+  │   ├── __init__.py
+  │   ├── context_agent.py
+  │   ├── planner_agent.py
+  │   ├── search_agent.py
+  │   ├── analyst_agent.py
+  │   └── guard_agent.py
+  │
+  ├── graph/
+  │   ├── __init__.py
+  │   └── agent_graph.py
+  │
+  ├── ingest/
+  │   ├── __init__.py
+  │   ├── doc_loader.py
+  │   ├── text_splitter.py
+  │   └── embedder.py
+  │
+  ├── guardrails/
+  │   ├── __init__.py
+  │   └── grounding_check.py
+  │
+  ├── eval/
+  │   ├── __init__.py
+  │   ├── trace_logger.py
+  │   ├── metrics.py
+  │   └── traces/
+  │       └── (auto-generated per-query JSON trace files)
+  │
+  ├── providers/
+  │   ├── __init__.py
+  │   ├── llm_factory.py
+  │   └── embedding_factory.py
+  │
+  ├── schemas/
+  │   ├── __init__.py
+  │   └── state.py
+  │
+  ├── config/
+  │   └── settings.yaml
+  │
+  ├── documents/
+  │   └── (drop your PDF files here)
+  │
+  ├── storage/
+  │   └── vectordb/
+  │       └── (ChromaDB persisted files — auto-generated)
+  │
+  ├── tests/
+  │   ├── __init__.py
+  │   ├── test_ingest.py
+  │   ├── test_agents.py
+  │   ├── test_graph.py
+  │   ├── test_providers.py
+  │   └── test_guardrails.py
+  │
+  ├── app.py
+  ├── cli.py
+  ├── .env
+  ├── .env.example
+  ├── .gitignore
+  ├── requirements.txt
+  └── README.md
+
+  ---
+  3. Tech Stack — Every Library
+
+  # Core Frameworks
+  google-adk                  ← agent orchestration, session, routing
+  langchain                   ← RAG core (loaders, splitters, retrievers)
+  langchain-community         ← ChromaDB integration, HF embeddings
+  langchain-groq              ← Groq LLM wrapper for LangChain
+  langchain-google-genai      ← Gemini LLM + embeddings for LangChain
+
+  # LLM Providers
+  groq                        ← free LLM API (dev phase)
+  google-generativeai         ← Gemini (final phase)
+
+  # Embeddings
+  sentence-transformers       ← HuggingFace local embeddings (dev phase)
+
+  # Vector Store
+  chromadb                    ← local persistent vector database
+
+  # Document Loading
+  pypdf                       ← PDF parsing
+  python-docx                 ← DOCX parsing (optional)
+
+  # Config + Validation
+  pyyaml                      ← read settings.yaml
+  pydantic                    ← data models and state validation
+  python-dotenv               ← load .env file
+
+  # Utilities
+  rich                        ← beautiful terminal output
+  typer                       ← CLI interface (cli.py)
+
+  ---
+  4. Configuration — config/settings.yaml
+
+  project:
+    name: "insight-engine"
+    version: "1.0.0"
+    description: "Multi-Agent RAG system for PDF document intelligence"
+
+  llm:
+    provider: "groq"                      # groq | gemini | huggingface
+    model_name: "llama-3.1-8b-instant"   # swap to gemini-1.5-flash for final
+    temperature: 0.2
+    max_tokens: 2048
+    timeout: 60
+
+  embeddings:
+    provider: "huggingface"               # huggingface | google | openai
+    model_name: "BAAI/bge-small-en-v1.5" # swap to models/text-embedding-004 for final
+    batch_size: 32
+    device: "cpu"                         # cpu | cuda
+
+  vector_store:
+    type: "chroma"
+    persist_path: "./storage/vectordb"
+    collection_name: "insight_docs"
+    distance_metric: "cosine"
+
+  ingest:
+    docs_path: "./documents"
+    supported_formats:
+      - "pdf"
+      - "txt"
+    chunk_size: 800
+    chunk_overlap: 100
+    split_strategy: "recursive"           # recursive | sentence | fixed
+
+  retrieval:
+    top_k: 5
+    score_threshold: 0.35
+    search_type: "similarity"             # similarity | mmr
+
+  agents:
+    context:
+      max_history_turns: 10
+      follow_up_detection: true
+    planner:
+      max_steps: 4
+      output_format: "numbered_list"
+    search:
+      rerank: false
+    analyst:
+      cite_sources: true
+      answer_format: "structured"
+    guard:
+      grounding_threshold: 0.60
+      max_retries: 2
+      fallback_message: "I could not find a sufficiently grounded answer in the documents."
+
+  eval:
+    enabled: true
+    trace_dir: "./eval/traces"
+    log_level: "INFO"
+    save_retrieved_chunks: true
+    save_grounding_score: true
+
+  ---
+  5. Credentials — .env.example
+
+  # ── Copy this file to .env and fill in values ──
+
+  # Groq (Free — Development Phase)
+  GROQ_API_KEY=your_groq_api_key_here
+
+  # Google Gemini (Final Phase)
+  GOOGLE_API_KEY=your_google_api_key_here
+
+  # HuggingFace (Optional)
+  HF_TOKEN=your_huggingface_token_here
+
+  # Active Provider (must match config/settings.yaml)
+  LLM_PROVIDER=groq
+  EMBEDDING_PROVIDER=huggingface
+
+  .gitignore will contain:
+  .env
+  storage/
+  eval/traces/
+  __pycache__/
+  *.pyc
+  .DS_Store
+
+  ---
+  6. Data Models — schemas/state.py
+
+  Three Pydantic models that flow through the entire pipeline:
+
+  QueryInput
+    ├── query: str                     ← raw user question
+    ├── session_id: str                ← identifies conversation session
+    └── timestamp: str
+
+  ChunkResult
+    ├── content: str                   ← text of retrieved chunk
+    ├── source: str                    ← PDF filename
+    ├── page: int                      ← page number
+    └── score: float                   ← similarity score
+
+  AgentState
+    ├── query: str                     ← current user query
+    ├── session_id: str
+    ├── history: List[dict]            ← prior conversation turns
+    ├── enriched_query: str            ← query + context from ContextAgent
+    ├── plan: List[str]                ← sub-steps from PlannerAgent
+    ├── retrieved_chunks: List[ChunkResult]  ← from SearchAgent
+    ├── answer: str                    ← from AnalystAgent
+    ├── sources: List[str]             ← cited sources
+    ├── grounding_score: float         ← from GuardAgent
+    ├── retry_count: int               ← how many retries happened
+    └── passed_guard: bool             ← final gate
+
+  ---
+  7. Provider Factories
+
+  providers/llm_factory.py
+
+  Reads settings.yaml → returns correct LLM client:
+
+  if provider == "groq"      → return ChatGroq(model=model_name, api_key=GROQ_API_KEY)
+  if provider == "gemini"    → return ChatGoogleGenerativeAI(model=model_name, api_key=GOOGLE_API_KEY)
+  if provider == "huggingface" → return HuggingFaceEndpoint(...)
+
+  providers/embedding_factory.py
+
+  Reads settings.yaml → returns correct embeddings:
+
+  if provider == "huggingface" → return HuggingFaceEmbeddings(model_name=model_name)
+  if provider == "google"      → return GoogleGenerativeAIEmbeddings(model=model_name)
+  if provider == "openai"      → return OpenAIEmbeddings(model=model_name)
+
+  One config line change switches the entire system. No code touched.
+
+  ---
+  8. Data Pipeline — Full Flow
+
+  Step 1: Drop PDFs into documents/
+
+  documents/
+  ├── paper1.pdf
+  ├── paper2.pdf
+  └── notes.txt
+
+  Step 2: ingest/doc_loader.py
+
+  For each file in documents/:
+    if .pdf  → LangChain PyPDFLoader → extract pages as Documents
+    if .txt  → LangChain TextLoader → extract as Document
+
+  Each Document has:
+    page_content: str     ← raw text
+    metadata:
+      source: filename
+      page: page_number
+      format: pdf/txt
+
+  Step 3: ingest/text_splitter.py
+
+  LangChain RecursiveCharacterTextSplitter
+    chunk_size    = 800    (from config)
+    chunk_overlap = 100    (from config)
+
+  Input:  List[Document] (full pages)
+  Output: List[Document] (smaller chunks with metadata preserved)
+
+  Example: 10-page PDF → ~40-60 chunks depending on density
+
+  Step 4: ingest/embedder.py
+
+  1. Load embedding model via embedding_factory.py
+  2. For each chunk:
+     - Call embed_documents([chunk.page_content])
+     - Returns 384-dim vector (HF) or 768-dim vector (Google)
+  3. Store in ChromaDB:
+     - collection: "insight_docs"
+     - persist_path: ./storage/vectordb
+     - Stored: vector + raw text + metadata
+  4. Print summary: "Indexed N chunks from M documents"
+
+  Full Ingest CLI Command:
+
+  python cli.py --ingest
+
+  ---
+  9. The 5 Agents — Detailed
+
+  Agent 1: ContextAgent (agents/context_agent.py)
+
+  Role: Manages conversation memory. Determines if the new query relates to prior turns.
+
+  Input: AgentState with query and history
+
+  Logic:
+  1. Load last N turns from state.history (N from config: max_history_turns=10)
+  2. Format history as: "User: ... Assistant: ..."
+  3. If history is not empty:
+     - Ask LLM: "Is this query a follow-up to the conversation? YES/NO"
+     - If YES → prepend relevant history context to query
+     - If NO  → treat as fresh query
+  4. Set state.enriched_query = (original query + relevant context)
+
+  Output: AgentState with enriched_query filled
+
+  ADK Role: First node in SequentialAgent pipeline
+
+  ---
+  Agent 2: PlannerAgent (agents/planner_agent.py)
+
+  Role: Breaks the enriched query into a retrieval execution plan.
+
+  Input: AgentState with enriched_query
+
+  Logic:
+  System Prompt:
+    "You are a query planning expert. Given a user question about documents,
+     break it into 2-4 specific retrieval sub-steps. Each step should be a
+     focused search query. Return as numbered list."
+
+  User Prompt: state.enriched_query
+
+  LLM returns:
+    1. Search for definition of [topic A]
+    2. Find details about [topic B]
+    3. Look for comparisons between [A] and [B]
+
+  Parse numbered list → state.plan = [step1, step2, step3]
+
+  Output: AgentState with plan filled (list of sub-queries)
+
+  ADK Role: Second node in pipeline
+
+  ---
+  Agent 3: SearchAgent (agents/search_agent.py)
+
+  Role: Executes each plan step as a vector search against ChromaDB.
+
+  Input: AgentState with plan
+
+  Logic:
+  1. Load ChromaDB collection via LangChain retriever
+  2. For each sub-query in state.plan:
+     a. Embed the sub-query using embedding_factory
+     b. Run similarity search: top_k=5, score_threshold=0.35 (from config)
+     c. Collect ChunkResult(content, source, page, score)
+  3. Deduplicate chunks (same source + page → keep highest score)
+  4. Sort all chunks by score descending
+  5. state.retrieved_chunks = top N unique chunks
+
+  Output: AgentState with retrieved_chunks filled
+
+  ADK Role: Third node in pipeline
+
+  ---
+  Agent 4: AnalystAgent (agents/analyst_agent.py)
+
+  Role: Reads the retrieved chunks and builds the final answer with citations.
+
+  Input: AgentState with enriched_query and retrieved_chunks
+
+  Logic:
+  System Prompt:
+    "You are a document analyst. Answer the user's question using ONLY
+     the provided document excerpts. Always cite the source document
+     and page number. If the answer is not in the documents, say so."
+
+  User Prompt:
+    Question: {state.enriched_query}
+
+    Documents:
+    [1] Source: paper1.pdf, Page 3
+        Content: {chunk1.content}
+
+    [2] Source: paper2.pdf, Page 7
+        Content: {chunk2.content}
+
+    ...
+
+  LLM returns structured answer with inline citations
+
+  Parse response:
+    state.answer  = full answer text
+    state.sources = list of cited source filenames + pages
+
+  Output: AgentState with answer and sources filled
+
+  ADK Role: Fourth node in pipeline
+
+  ---
+  Agent 5: GuardAgent (agents/guard_agent.py)
+
+  Role: Validates that the answer is actually grounded in the retrieved chunks. Prevents hallucination.
+
+  Input: AgentState with answer and retrieved_chunks
+
+  Logic:
+  guardrails/grounding_check.py scores the answer:
+
+    Method:
+    1. Embed the answer
+    2. Embed each retrieved chunk
+    3. Compute cosine similarity between answer and each chunk
+    4. grounding_score = max similarity across all chunks
+
+    If grounding_score >= 0.60 (config threshold):
+      state.passed_guard = True
+      return answer to user
+
+    If grounding_score < 0.60:
+      state.retry_count += 1
+      If retry_count < max_retries (2):
+        Loop back to SearchAgent with broader query
+      Else:
+        Return fallback_message from config
+
+  Output: Final answer delivered to user OR retry triggered
+
+  ADK Role: Fifth node — has conditional branch (pass/retry/fallback)
+
+  ---
+  10. ADK Pipeline — graph/agent_graph.py
+
+  Google ADK SequentialAgent:
+
+  Pipeline:
+    Runner
+      └── SequentialAgent("insight_pipeline")
+            ├── Node 1: ContextAgent
+            ├── Node 2: PlannerAgent
+            ├── Node 3: SearchAgent
+            ├── Node 4: AnalystAgent
+            └── Node 5: GuardAgent
+                  ├── [PASS]  → return AgentState.answer
+                  ├── [RETRY] → back to Node 3 (SearchAgent)
+                  └── [FAIL]  → return fallback_message
+
+  ADK Session:
+    - session_id passed per conversation
+    - InvocationContext carries AgentState between nodes
+    - ADK handles state persistence within session
+
+  ---
+  11. Guardrails — guardrails/grounding_check.py
+
+  Function: compute_grounding_score(answer, chunks)
+
+  Steps:
+  1. Use same embedding model (from embedding_factory)
+  2. Embed answer string → answer_vector
+  3. For each chunk:
+     - Embed chunk.content → chunk_vector
+     - Compute cosine_similarity(answer_vector, chunk_vector)
+  4. Return max similarity as grounding_score (0.0 to 1.0)
+
+  Threshold logic (in GuardAgent):
+    >= 0.60 → PASS
+    < 0.60 and retries < 2 → RETRY
+    < 0.60 and retries >= 2 → FALLBACK
+
+  ---
+  12. Eval & Tracing — eval/
+
+  eval/trace_logger.py
+
+  Every query generates one JSON file in eval/traces/:
+
+  {
+    "session_id": "abc123",
+    "timestamp": "2026-06-16T10:30:00",
+    "query": "What is attention mechanism?",
+    "enriched_query": "What is attention mechanism? (context: ...)",
+    "plan": ["Search for attention mechanism definition", "Find transformer architecture details"],
+    "retrieved_chunks": [
+      {"source": "attention_paper.pdf", "page": 3, "score": 0.87, "content": "..."}
+    ],
+    "answer": "The attention mechanism is...",
+    "sources": ["attention_paper.pdf:3", "attention_paper.pdf:5"],
+    "grounding_score": 0.81,
+    "passed_guard": true,
+    "retry_count": 0,
+    "latency_ms": 1420
+  }
+
+  eval/metrics.py
+
+  Functions:
+  compute_avg_retrieval_score(trace)   → float
+  compute_grounding_rate(traces_dir)   → % queries that passed guard
+  compute_avg_latency(traces_dir)      → ms
+  print_summary_report(traces_dir)     → formatted table in terminal
+
+  ---
+  13. Entry Points
+
+  cli.py — Command Line
+
+  python cli.py --ingest
+    → loads docs from documents/, chunks, embeds, stores in ChromaDB
+    → prints: "Indexed 47 chunks from 3 documents"
+
+  python cli.py --query "What is the transformer architecture?"
+    → runs single query through pipeline
+    → prints answer + sources
+
+  python cli.py --eval
+    → reads all traces in eval/traces/
+    → prints metrics summary report
+
+  python cli.py --provider groq
+    → overrides config LLM provider for this run
+
+  app.py — Interactive Chat Loop
+
+  python app.py
+
+  Welcome to Insight Engine
+  Documents loaded: 3 PDFs | 47 chunks indexed
+
+  You: What is RAG?
+  Assistant: [runs pipeline] RAG stands for...
+  Sources: [retrieval_paper.pdf:2, retrieval_paper.pdf:4]
+
+  You: How does it compare to fine-tuning?
+  Assistant: [ContextAgent detects follow-up] Compared to fine-tuning...
+
+  You: exit
+  Goodbye.
+
+  ---
+  14. Testing Plan — tests/
+
+  test_ingest.py
+
+  test_pdf_loader_loads_documents()
+    → drop sample.pdf in documents/, run loader, assert len(docs) > 0
+
+  test_text_splitter_chunks_correctly()
+    → pass 1000-char text, assert chunks ≤ chunk_size + overlap
+
+  test_embedder_creates_collection()
+    → run full ingest, assert ChromaDB collection exists and count > 0
+
+  test_providers.py
+
+  test_llm_factory_returns_groq_client()
+    → set provider=groq in config, assert returns ChatGroq instance
+
+  test_llm_factory_returns_gemini_client()
+    → set provider=gemini, assert returns ChatGoogleGenerativeAI instance
+
+  test_embedding_factory_returns_hf_embeddings()
+    → set provider=huggingface, assert embed_query returns list of floats
+
+  test_embedding_dimensions()
+    → assert len(vector) == 384 for BAAI/bge-small-en-v1.5
+
+  test_agents.py
+
+  test_context_agent_enriches_query()
+    → pass AgentState with history, assert enriched_query contains history
+
+  test_context_agent_handles_empty_history()
+    → pass AgentState with empty history, assert enriched_query == query
+
+  test_planner_agent_returns_list()
+    → pass query, assert state.plan is list with len >= 1
+
+  test_search_agent_returns_chunks()
+    → requires indexed ChromaDB, assert len(retrieved_chunks) > 0
+
+  test_analyst_agent_returns_answer()
+    → pass mock chunks, assert state.answer is non-empty string
+
+  test_guard_agent_passes_high_grounding()
+    → mock grounding_score = 0.85, assert passed_guard == True
+
+  test_guard_agent_retries_on_low_grounding()
+    → mock grounding_score = 0.30, assert retry_count == 1
+
+  test_graph.py
+
+  test_full_pipeline_end_to_end()
+    → run complete pipeline with real query
+    → assert final state has: answer, sources, grounding_score, passed_guard
+
+  test_pipeline_handles_retry()
+    → mock low grounding → assert retry triggered → assert final answer returned
+
+  test_guardrails.py
+
+  test_grounding_score_range()
+    → assert 0.0 <= score <= 1.0
+
+  test_high_similarity_scores_high()
+    → answer very similar to chunk → assert score >= 0.70
+
+  test_unrelated_answer_scores_low()
+    → answer about cars, chunks about AI → assert score < 0.40
+
+  ---
+  15. Build Phases — Execution Order
+
+  ┌───────┬────────────────────────────────────────────────────────────────────────────────────────┬────────────────────────────────┐
+  │ Phase │                                         Files                                          │          What It Does          │
+  ├───────┼────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────┤
+  │ 1     │ schemas/state.py, config/settings.yaml, .env, .env.example, .gitignore,                │ Foundation: models, config,    │
+  │       │ requirements.txt                                                                       │ credentials                    │
+  ├───────┼────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────┤
+  │ 2     │ providers/llm_factory.py, providers/embedding_factory.py                               │ Provider switching layer       │
+  ├───────┼────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────┤
+  │ 3     │ ingest/doc_loader.py, ingest/text_splitter.py, ingest/embedder.py                      │ Full PDF → ChromaDB pipeline   │
+  ├───────┼────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────┤
+  │ 4     │ agents/context_agent.py, agents/planner_agent.py, agents/search_agent.py,              │ All 5 agents                   │
+  │       │ agents/analyst_agent.py, agents/guard_agent.py                                         │                                │
+  ├───────┼────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────┤
+  │ 5     │ graph/agent_graph.py                                                                   │ ADK SequentialAgent wiring all │
+  │       │                                                                                        │  5                             │
+  ├───────┼────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────┤
+  │ 6     │ guardrails/grounding_check.py                                                          │ Grounding score logic          │
+  ├───────┼────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────┤
+  │ 7     │ eval/trace_logger.py, eval/metrics.py                                                  │ Tracing and metrics            │
+  ├───────┼────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────┤
+  │ 8     │ app.py, cli.py                                                                         │ Entry points                   │
+  ├───────┼────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────┤
+  │ 9     │ tests/                                                                                 │ All test files                 │
+  ├───────┼────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────┤
+  │ 10    │ README.md                                                                              │ Manager-facing setup guide     │
+  └───────┴────────────────────────────────────────────────────────────────────────────────────────┴────────────────────────────────┘
+
+  ---
+  16. README — What Manager Sees
+
+  # Insight Engine — Multi-Agent RAG System
+
+  ## Setup
+  git clone https://github.com/you/insight-engine
+  cd insight-engine
+  pip install -r requirements.txt
+  cp .env.example .env        # fill in GROQ_API_KEY (free at console.groq.com)
+
+  ## Add Your Documents
+  Drop PDF files into documents/
+
+  ## Run
+  python cli.py --ingest      # index your PDFs
+  python app.py               # start chatting
+
+  ## Switch to Gemini
+  # In .env: set GOOGLE_API_KEY
+  # In config/settings.yaml:
+  #   llm.provider: gemini
+  #   llm.model_name: gemini-1.5-pro
+  #   embeddings.provider: google
+  #   embeddings.model_name: models/text-embedding-004
+
+  ## Run Tests
+  pytest tests/ -v
+
+  ---
+  17. Complete System Flow (End to End)
+
+  [PDF Files in documents/]
+          │
+          ▼
+  cli.py --ingest
+          │
+          ├── doc_loader.py       → LangChain PyPDFLoader → List[Document]
+          ├── text_splitter.py    → RecursiveCharacterTextSplitter → List[Chunk]
+          └── embedder.py         → HF/Google embeddings → ChromaDB stored
+                                                              │
+                                                      [storage/vectordb/]
+
+
+  [User types question in app.py]
+          │
+          ▼
+  AgentState created (query, session_id, empty fields)
+          │
+          ▼
+  graph/agent_graph.py — ADK SequentialAgent starts
+          │
+          ├── [1] ContextAgent
+          │       → loads history from session
+          │       → enriches query with prior context
+          │       → sets state.enriched_query
+          │
+          ├── [2] PlannerAgent
+          │       → LLM call with enriched_query
+          │       → returns 2-4 sub-steps
+          │       → sets state.plan
+          │
+          ├── [3] SearchAgent
+          │       → embeds each sub-step query
+          │       → ChromaDB similarity search (top_k=5)
+          │       → deduplicates and ranks chunks
+          │       → sets state.retrieved_chunks
+          │
+          ├── [4] AnalystAgent
+          │       → LLM call with chunks + query
+          │       → builds cited answer
+          │       → sets state.answer, state.sources
+          │
+          └── [5] GuardAgent
+                  → grounding_check.py scores answer vs chunks
+                  → if score >= 0.60:
+                  │     state.passed_guard = True
+                  │     return answer + sources to user
+                  │     trace_logger writes eval/traces/xxx.json
+                  │
+                  └── if score < 0.60 and retries < 2:
+                        state.retry_count += 1
+                        loop back to SearchAgent
+
+                      if retries >= 2:
+                        return fallback_message
+
+  ---
+  This is the complete plan. Confirm and I will create the .txt file of this plan, then we start Phase 1 immediately.

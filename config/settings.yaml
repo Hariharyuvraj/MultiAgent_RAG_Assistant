@@ -1,0 +1,65 @@
+project:
+  name: "MultiAgent_RAG_Assistant"
+  version: "1.0.0"
+  description: "Multi-Agent RAG system for PDF document intelligence"
+
+storage:
+  sqlite_path: "./storage/history.db"
+
+llm:
+  provider: "groq"
+  model_name: "llama-3.1-8b-instant"
+  temperature: 0.2
+  max_tokens: 4096
+  timeout: 60
+
+embeddings:
+  provider: "huggingface"
+  model_name: "BAAI/bge-small-en-v1.5"
+  batch_size: 32
+  device: "cpu"
+
+vector_store:
+  type: "chroma"
+  persist_path: "./storage/vectordb"
+  collection_name: "rag_docs"
+  distance_metric: "cosine"
+
+ingest:
+  docs_path: "./documents"
+  supported_formats:
+    - "pdf"
+    - "txt"
+  chunk_size: 800
+  chunk_overlap: 100
+  split_strategy: "recursive"
+
+retrieval:
+  top_k: 5
+  score_threshold: 0.35
+  min_relevance_threshold: 0.50
+  search_type: "similarity"
+
+agents:
+  context:
+    max_history_turns: 10
+    follow_up_detection: true
+  planner:
+    max_steps: 4
+    output_format: "numbered_list"
+  search:
+    rerank: false
+  analyst:
+    cite_sources: true
+    answer_format: "structured"
+  guard:
+    grounding_threshold: 0.60
+    max_retries: 2
+    fallback_message: "I could not find a sufficiently grounded answer in the provided documents."
+
+eval:
+  enabled: true
+  trace_dir: "./eval/traces"
+  log_level: "INFO"
+  save_retrieved_chunks: true
+  save_grounding_score: true

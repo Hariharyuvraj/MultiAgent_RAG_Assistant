@@ -1,0 +1,17 @@
+.env
+storage/
+eval/traces/
+eval/ground_truth.csv
+eval/ragas_results.json
+documents/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
