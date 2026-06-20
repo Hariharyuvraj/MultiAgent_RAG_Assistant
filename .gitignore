@@ -3,7 +3,6 @@ storage/
 eval/traces/
 eval/ground_truth.csv
 eval/ragas_results.json
-documents/
 __pycache__/
 *.pyc
 *.pyo
